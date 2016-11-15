@@ -54,12 +54,48 @@ object Application extends App {
 
   def dbProcess(): ConnectionIO[Int] =
     for {
-      l1 <- sql"SELECT GOBTPAC_PIDM, GOBTPAC_LDAP_USER FROM GOBTPAC LEFT OUTER JOIN GOBUMAP ON GOBUMAP_PIDM = GOBTPAC_PIDM WHERE GOBTPAC_LDAP_USER is not null and GOBUMAP_PIDM is null".query[Identity].list
-      i1 <- Update[GobumapRecord]("insert into GOBUMAP (GOBUMAP_UDC_ID, GOBUMAP_PIDM, GOBUMAP_CREATE_DATE, GOBUMAP_ACTIVITY_DATE, GOBUMAP_USER_ID, GOBUMAP_DATA_ORIGIN) VALUES (?, ?, ?, ?, ?, ?)").updateMany(l1.map(generateGOBUMAP))
-      l2 <- sql"SELECT GOBTPAC_PIDM, GOBTPAC_LDAP_USER FROM GOBTPAC INNER JOIN GOBUMAP ON GOBUMAP_PIDM = GOBTPAC_PIDM WHERE GOBTPAC_LDAP_USER is not null and GOBUMAP_UDC_ID <> GOBTPAC_LDAP_USER".query[Identity].list
-      i2 <- Update[GobumapActivityRecord]("update GOBUMAP set GOBUMAP_UDC_ID = ? , GOBUMAP_ACTIVITY_DATE = ? where GOBUMAP_PIDM = ?").updateMany(l2.map(generateGOBUMAPActivity))
-      l3 <- sql"SELECT GOBTPAC_PIDM FROM GOBTPAC INNER JOIN GOBUMAP ON GOBUMAP_PIDM = GOBTPAC_PIDM WHERE GOBTPAC_LDAP_USER is null".query[Int].list
-      i3 <- Update[Int]("DELETE FROM GOBUMAP WHERE GOBUMAP_PIDM = ?").updateMany(l3)
+      l1 <-
+        sql"""SELECT GOBTPAC_PIDM, GOBTPAC_LDAP_USER
+              FROM GOBTPAC
+              LEFT OUTER JOIN GOBUMAP
+              ON GOBUMAP_PIDM = GOBTPAC_PIDM
+              WHERE GOBTPAC_LDAP_USER is not null
+              and GOBUMAP_PIDM is null""".query[Identity].list
+      i1 <- Update[GobumapRecord]{
+        """INSERT INTO GOBUMAP (
+          |GOBUMAP_UDC_ID,
+          |GOBUMAP_PIDM,
+          |GOBUMAP_CREATE_DATE,
+          |GOBUMAP_ACTIVITY_DATE,
+          |GOBUMAP_USER_ID,
+          |GOBUMAP_DATA_ORIGIN
+          |)
+          |VALUES (?, ?, ?, ?, ?, ?)""".stripMargin
+      }.updateMany(l1.map(generateGOBUMAP))
+      l2 <-
+        sql"""SELECT GOBTPAC_PIDM, GOBTPAC_LDAP_USER
+              FROM GOBTPAC
+              INNER JOIN GOBUMAP
+              ON GOBUMAP_PIDM = GOBTPAC_PIDM
+              WHERE GOBTPAC_LDAP_USER is not null
+              and GOBUMAP_UDC_ID <> GOBTPAC_LDAP_USER""".query[Identity].list
+      i2 <- Update[GobumapActivityRecord]{
+        """UPDATE GOBUMAP
+          |SET
+          |GOBUMAP_UDC_ID = ? ,
+          |GOBUMAP_ACTIVITY_DATE = ?
+          |WHERE GOBUMAP_PIDM = ?""".stripMargin
+      }.updateMany(l2.map(generateGOBUMAPActivity))
+      l3 <-
+        sql"""SELECT GOBTPAC_PIDM
+              FROM GOBTPAC
+              INNER JOIN GOBUMAP
+              ON GOBUMAP_PIDM = GOBTPAC_PIDM
+              WHERE GOBTPAC_LDAP_USER is null""".query[Int].list
+      i3 <- Update[Int]{
+        """DELETE FROM GOBUMAP
+          |WHERE GOBUMAP_PIDM = ?""".stripMargin
+      }.updateMany(l3)
     } yield i1 + i2 + i3
 
   val a = dbProcess().transact(xa).unsafePerformIO
